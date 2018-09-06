@@ -12,6 +12,9 @@ Clone this repository and change into its directory:
 git clone https://github.com/jrosenauer/myRetailCaseStudy.git
 cd myRetailCaseStudy
 ```
+
+This project assumes that you have mongo installed & running.
+To install mongo follow the procedure at [https://docs.mongodb.com/manual/administration/install-on-linux/](https://docs.mongodb.com/manual/administration/install-on-linux/).
 # Testing
 
 To run tests you can execute the local `mvnw` script passing the `test` argument:
