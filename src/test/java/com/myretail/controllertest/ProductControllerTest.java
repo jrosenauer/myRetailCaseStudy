@@ -1,75 +1,128 @@
 package com.myretail.controllertest;
 
-import com.myretail.controller.ProductController;
 import com.myretail.model.CurrentPrice;
 import com.myretail.model.Product;
-import com.myretail.service.ProductSearchServiceImpl;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mockito;
-import org.omg.CORBA.Current;
-import org.skyscreamer.jsonassert.JSONAssert;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringRunner;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.RequestBuilder;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
+import org.testng.annotations.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Random;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Java6Assertions.assertThat;
 
-@RunWith(SpringRunner.class)
-@ContextConfiguration(classes = ProductController.class)
-@WebMvcTest(value = ProductController.class, secure = false)
-public class ProductControllerTest {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+public class ProductControllerTest extends AbstractTestNGSpringContextTests {
 
     @Autowired
-    private MockMvc mockMvc;
+    private TestRestTemplate restTemplate;
 
-    @MockBean
-    @Qualifier(value = "productSearchService")
-    private ProductSearchServiceImpl productSearchService;
+    private Product fixture;
 
-    private int movie_id = 13860428;
-    Product product = null;
-    CurrentPrice currentPrice = new CurrentPrice();
+    @Test(priority = 1)
+    public void beforeTest() {
 
-    @Before
-    public void setUp() {
-        currentPrice.setProductId(movie_id);
-        currentPrice.setCurrencyCode("USD");
-        currentPrice.setValue(BigDecimal.valueOf(13.49));
-        product = new Product(movie_id, "The Big Lebowski (Blue-ray)", currentPrice);
+        Product product = new Product();
+        CurrentPrice currentPrice = new CurrentPrice();
+        Random rand = new Random();
+
+        product.setName("Some New Product Fixture");
+        product.setProductId(rand.nextInt(999) + 1);
+        currentPrice.setValue(BigDecimal.valueOf(19.99));
+        currentPrice.setCurrencyCode("eur");
+        product.setCurrentPrice(currentPrice);
+
+        ResponseEntity<Product> createdEntity = this.restTemplate.exchange(
+
+                "/products",
+                HttpMethod.POST,
+                new HttpEntity<>(product),
+                new ParameterizedTypeReference<Product>() {
+                }
+
+        );
+
+        assertThat(createdEntity.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        Product createdProduct = createdEntity.getBody();
+
+        assertThat(createdProduct.getName()).isEqualTo("Some New Product Fixture");
+
+        fixture = createdProduct;
+
     }
 
-    @Test
-    public void getProductDetailsTest() throws Exception {
-        Mockito.when(productSearchService.getProductSearch(movie_id)).thenReturn(product);
-        RequestBuilder requestBuilder = MockMvcRequestBuilders.get("/product/" + movie_id).accept(MediaType.APPLICATION_JSON);
-        MvcResult result = mockMvc.perform(requestBuilder).andReturn();
-        String expectedResult = "{\"productId\":13860428,\"name\":\"The Big Lebowski (Blue-ray)\",\"currentPrice\":{\"value\":13.49,\"currencyCode\":\"USD\"}}";
-        JSONAssert.assertEquals(expectedResult, result.getResponse().getContentAsString(), false);
+    @Test(priority = 2)
+    public void testGetAllProducts() {
+
+        ResponseEntity<List<Product>> entity = this.restTemplate.exchange(
+
+                "/products",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<Product>>() {
+                }
+
+        );
+
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entity.getBody().size()).isGreaterThanOrEqualTo(1);
+
     }
 
+    @Test(priority = 3)
+    public void testGetProductById() {
 
-    @Test(expected = MethodArgumentTypeMismatchException.class)
-    public void getProductDetailsBadRequestTest() throws Exception, MethodArgumentTypeMismatchException {
-        String variable = "ABC";
-        RequestBuilder requestBuilder = MockMvcRequestBuilders.get("/product/" + variable).accept(MediaType.APPLICATION_JSON);
-        MvcResult result = mockMvc.perform(requestBuilder).andReturn();
-        Assert.assertEquals(HttpStatus.BAD_REQUEST.value(), result.getResponse().getStatus());
-        throw result.getResolvedException();
+        ResponseEntity<Product> entity = this.restTemplate.exchange(
+
+                "/products/" + fixture.getProductId(),
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<Product>() {
+                }
+
+        );
+
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Product product = entity.getBody();
+
+        assertThat(product.getProductId()).isEqualTo(fixture.getProductId());
+
     }
+
+    @Test(priority = 4)
+    public void testUpdateProductById() {
+
+        fixture.setName("Some new product name");
+        fixture.getCurrentPrice().setValue(BigDecimal.valueOf(12.99));
+
+        ResponseEntity<Product> getEntity = this.restTemplate.exchange(
+
+                "/products/" + fixture.getProductId(),
+                HttpMethod.PUT,
+                new HttpEntity<>(fixture),
+                new ParameterizedTypeReference<Product>() {
+                }
+
+        );
+
+        assertThat(getEntity.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        Product getProduct = getEntity.getBody();
+
+        assertThat(getProduct.getProductId()).isEqualTo(fixture.getProductId());
+        assertThat(getProduct.getName()).isEqualTo("Some new product name");
+        assertThat(getProduct.getCurrentPrice().getValue()).isEqualTo(BigDecimal.valueOf(12.99));
+
+    }
+
 }
